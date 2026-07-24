@@ -1,0 +1,118 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@300;400;500;600&display=swap');
+
+/* Default Light Theme: Soft Warm Off-White */
+:root, [data-theme="light"] {
+  --bg-canvas: #FBFBFA;
+  --bg-surface: #F4F4F0;
+  --text-charcoal: #111110;
+  --text-muted: #787774;
+  --border-hairline: #E8E7E3;
+  --accent-bronze: #4A433B;
+  --accent-contrast: #FBFBFA;
+  --badge-bg: #E8E7E3;
+  --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
+  
+  --font-serif: 'Instrument Serif', Georgia, serif;
+  --font-sans: 'Plus Jakarta Sans', -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* Complementary Dark Theme: Dark Obsidian Studio */
+[data-theme="dark"] {
+  --bg-canvas: #111110;
+  --bg-surface: #1B1B19;
+  --text-charcoal: #F7F6F2;
+  --text-muted: #9E9B93;
+  --border-hairline: #2A2926;
+  --accent-bronze: #D4C5B3;
+  --accent-contrast: #111110;
+  --badge-bg: #2A2926;
+  --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+}
+
+html, body {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  background-color: var(--bg-canvas);
+  color: var(--text-charcoal);
+  font-family: var(--font-sans);
+  font-weight: 300;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background-color: var(--accent-bronze);
+  color: var(--accent-contrast);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  color: var(--text-charcoal);
+  letter-spacing: -0.01em;
+}
+
+input, button, textarea, select {
+  font-family: inherit;
+}
+
+/* Global responsive image helper */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Mobile responsive utility overrides */
+@media (max-width: 768px) {
+  .responsive-padding {
+    padding: 24px 16px !important;
+  }
+
+  .responsive-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 16px !important;
+  }
+
+  .responsive-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .responsive-modal {
+    padding: 20px !important;
+    width: 95% !important;
+    max-height: 92vh !important;
+  }
+
+  .responsive-row-two {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+}
+
+/* Global scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-canvas);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-hairline);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
