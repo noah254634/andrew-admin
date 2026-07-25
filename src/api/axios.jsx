@@ -30,6 +30,21 @@ export const getApiBaseURL = () => {
   return DEFAULT_RENDER_API_URL;
 };
 
+// Formats image URLs dynamically so localhost, relative paths, or Cloudflare R2 links work on phones
+export const formatImageUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http://127.0.0.1:8000') || url.startsWith('http://localhost:8000')) {
+    const relativePath = url.replace(/^http:\/\/(127\.0\.0\.1|localhost):8000/, '');
+    const apiBase = getApiBaseURL().replace(/\/api\/v1\/?$/, '');
+    return `${apiBase}${relativePath}`;
+  }
+  if (url.startsWith('/static/')) {
+    const apiBase = getApiBaseURL().replace(/\/api\/v1\/?$/, '');
+    return `${apiBase}${url}`;
+  }
+  return url;
+};
+
 const api = axios.create({
   baseURL: getApiBaseURL(),
   timeout: 10000,
