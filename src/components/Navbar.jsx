@@ -20,10 +20,12 @@ export default function Navbar() {
     { label: 'Overview', path: '/admin/dashboard' },
     { label: 'Selected Works', path: '/admin/projects' },
     { label: 'Services', path: '/admin/services' },
+    { label: 'Reviews', path: '/admin/reviews' },
     { label: 'Inquiries', path: '/admin/inquiries' },
     { label: 'Profile & CV', path: '/admin/profile' },
     { label: 'Media Library', path: '/admin/media' },
   ];
+
 
   return (
     <header style={styles.headerContainer}>

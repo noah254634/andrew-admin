@@ -7,6 +7,7 @@ import Services from './pages/Services';
 import Inquiries from './pages/Inquiries';
 import Profile from './pages/Profile';
 import Media from './pages/Media';
+import Reviews from './pages/Reviews';
 import ProtectedRoute from './components/ProtectRoute';
 import { useThemeStore } from './store/useThemeStore';
 
@@ -29,10 +30,12 @@ export default function App() {
           <Route path="/admin/dashboard" element={<Dashboard />} />
           <Route path="/admin/projects" element={<Projects />} />
           <Route path="/admin/services" element={<Services />} />
+          <Route path="/admin/reviews" element={<Reviews />} />
           <Route path="/admin/inquiries" element={<Inquiries />} />
           <Route path="/admin/profile" element={<Profile />} />
           <Route path="/admin/media" element={<Media />} />
         </Route>
+
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/login" replace />} />

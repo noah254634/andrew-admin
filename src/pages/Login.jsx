@@ -2,17 +2,21 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { useThemeStore } from '../store/useThemeStore';
+import StarfieldCanvas from '../components/StarfieldCanvas';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { login, error, isLoading } = useAuthStore();
+  const [submitting, setSubmitting] = useState(false);
+  const { login, error } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitting(true);
     const success = await login(email, password);
+    setSubmitting(false);
     if (success) {
       navigate('/admin/dashboard');
     }
@@ -20,6 +24,7 @@ export default function Login() {
 
   return (
     <div style={styles.container}>
+      <StarfieldCanvas />
       <div style={styles.topBar}>
         <button onClick={toggleTheme} style={styles.themeToggleBtn}>
           ◐ {theme === 'light' ? 'Obsidian' : 'Porcelain'} Mode
@@ -60,8 +65,8 @@ export default function Login() {
             />
           </div>
 
-          <button type="submit" disabled={isLoading} style={styles.button}>
-            {isLoading ? 'Authenticating...' : 'Sign In'}
+          <button type="submit" disabled={submitting} style={styles.button}>
+            {submitting ? 'Authenticating...' : 'Sign In'}
           </button>
         </form>
 
@@ -85,11 +90,13 @@ const styles = {
     fontFamily: "var(--font-sans)",
     padding: '24px',
     position: 'relative',
+    overflow: 'hidden',
   },
   topBar: {
     position: 'absolute',
     top: '24px',
     right: '24px',
+    zIndex: 1,
   },
   themeToggleBtn: {
     padding: '8px 16px',
@@ -109,6 +116,8 @@ const styles = {
     borderRadius: '12px',
     padding: '48px 36px',
     boxShadow: 'var(--card-shadow)',
+    position: 'relative',
+    zIndex: 1,
   },
   header: {
     marginBottom: '36px',

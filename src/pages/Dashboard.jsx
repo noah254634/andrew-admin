@@ -7,6 +7,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState({
     projectsCount: 0,
     servicesCount: 0,
+    reviewsCount: 0,
     inquiriesCount: 0,
     unreadInquiriesCount: 0,
   });
@@ -21,20 +22,23 @@ export default function Dashboard() {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const [projRes, servRes, inqRes] = await Promise.all([
+      const [projRes, servRes, revRes, inqRes] = await Promise.all([
         api.get('/projects').catch(() => ({ data: [] })),
         api.get('/services').catch(() => ({ data: [] })),
+        api.get('/reviews?all_status=true').catch(() => ({ data: [] })),
         api.get('/inquiries').catch(() => ({ data: [] })),
       ]);
 
       const projects = projRes.data || [];
       const services = servRes.data || [];
+      const reviews = revRes.data || [];
       const inquiries = inqRes.data || [];
       const unreadInquiries = inquiries.filter((i) => !i.read).length;
 
       setStats({
         projectsCount: projects.length,
         servicesCount: services.length,
+        reviewsCount: reviews.length,
         inquiriesCount: inquiries.length,
         unreadInquiriesCount: unreadInquiries,
       });
@@ -47,6 +51,7 @@ export default function Dashboard() {
       setLoading(false);
     }
   };
+
 
   return (
     <div style={styles.pageContainer}>
@@ -82,6 +87,15 @@ export default function Dashboard() {
               Manage Offerings &rarr;
             </Link>
           </div>
+
+          <div style={styles.metricCard}>
+            <span style={styles.metricLabel}>Client Reviews</span>
+            <div style={styles.metricValue}>{loading ? '—' : stats.reviewsCount}</div>
+            <Link to="/admin/reviews" style={styles.metricLink}>
+              Manage Reviews &rarr;
+            </Link>
+          </div>
+
 
           <div style={styles.metricCard}>
             <span style={styles.metricLabel}>Client Inquiries</span>
