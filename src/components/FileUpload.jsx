@@ -37,9 +37,10 @@ export default function FileUpload({ onUploadSuccess, accept = "image/*,.pdf", l
     formData.append('file', file);
 
     try {
-      const response = await api.post('/upload', formData, {
+      // Omit Content-Type header so browser automatically injects proper multipart boundary
+      const response = await api.post('/upload/', formData, {
         headers: {
-          'Content-Type': 'multipart/form-data',
+          'Content-Type': undefined,
         },
       });
 
@@ -48,7 +49,8 @@ export default function FileUpload({ onUploadSuccess, accept = "image/*,.pdf", l
         onUploadSuccess(uploadedData);
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'File upload failed.');
+      console.error('FileUpload error:', err);
+      setError(err.response?.data?.detail || 'File upload failed. Please try again.');
     } finally {
       setUploading(false);
     }
