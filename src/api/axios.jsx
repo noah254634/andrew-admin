@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+export const DEFAULT_RENDER_API_URL = 'https://andrew-portfolio-backend.onrender.com/api/v1';
+
 export const getApiBaseURL = () => {
   const customUrl = localStorage.getItem('custom_api_url');
   if (customUrl) {
@@ -14,22 +16,23 @@ export const getApiBaseURL = () => {
   const protocol = window.location.protocol;
   const hostname = window.location.hostname;
 
-  // If accessing from phone via LAN IP (e.g. 192.168.x.x:5173 -> point to port 8000)
+  // Local device testing via LAN IP (e.g. 192.168.x.x:5173 -> point to port 8000)
   if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
     return `${protocol}//${hostname}:8000/api/v1`;
   }
 
-  // If accessing via ngrok or cloud production domain
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `${window.location.origin}/api/v1`;
+  // Localhost development
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://127.0.0.1:8000/api/v1';
   }
 
-  return 'http://127.0.0.1:8000/api/v1';
+  // Production Vercel / Cloud Domain -> Fallback to Render Backend
+  return DEFAULT_RENDER_API_URL;
 };
 
 const api = axios.create({
   baseURL: getApiBaseURL(),
-  timeout: 8000, // 8 second timeout to prevent hanging forever on mobile
+  timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
     'ngrok-skip-browser-warning': 'true',
