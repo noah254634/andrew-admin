@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-export const DEFAULT_RENDER_API_URL = 'https://andrew-portfolio-backend.onrender.com/api/v1';
+export const DEFAULT_RENDER_API_URL = 'https://andrew-portfolio-backend-z42h.onrender.com/api/v1';
 
 export const getApiBaseURL = () => {
   const customUrl = localStorage.getItem('custom_api_url');
@@ -26,7 +26,7 @@ export const getApiBaseURL = () => {
     return 'http://127.0.0.1:8000/api/v1';
   }
 
-  // Production Vercel / Cloud Domain -> Fallback to Render Backend
+  // Production Vercel / Cloud Domain -> Fallback to Actual Render Backend URL
   return DEFAULT_RENDER_API_URL;
 };
 
