@@ -36,6 +36,7 @@ export default function FileUpload({ onUploadSuccess, accept = "image/*,.pdf", l
     const formData = new FormData();
     formData.append('file', file);
 
+    let uploadedData = null;
     try {
       // Omit Content-Type header so browser automatically injects proper multipart boundary
       const response = await api.post('/upload/', formData, {
@@ -44,15 +45,24 @@ export default function FileUpload({ onUploadSuccess, accept = "image/*,.pdf", l
         },
       });
 
-      const uploadedData = response.data;
-      if (onUploadSuccess) {
-        onUploadSuccess(uploadedData);
-      }
+      uploadedData = response.data;
     } catch (err) {
-      console.error('FileUpload error:', err);
-      setError(err.response?.data?.detail || 'File upload failed. Please try again.');
+      console.error('FileUpload error details:', err.response?.data || err);
+      const detail = err.response?.data?.detail;
+      const statusText = err.response?.status ? `[HTTP ${err.response.status}] ` : '';
+      const fullErrorMsg = typeof detail === 'object' ? JSON.stringify(detail) : (detail || err.message || 'File upload failed.');
+      setError(`${statusText}${fullErrorMsg}`);
     } finally {
       setUploading(false);
+    }
+
+    // Safely trigger parent callback OUTSIDE the upload try/catch block
+    if (uploadedData && onUploadSuccess) {
+      try {
+        onUploadSuccess(uploadedData);
+      } catch (parentErr) {
+        console.warn('Parent onUploadSuccess callback handler warning:', parentErr);
+      }
     }
   };
 
