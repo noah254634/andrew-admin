@@ -1,249 +1,318 @@
-import { useState, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import api from '../api/axios';
 
-// High-speed browser Canvas image compressor: reduces multi-megabyte photos to ~300KB WebP in <50ms
-const compressImageIfNeeded = (file) => {
-  return new Promise((resolve) => {
-    if (!file.type.startsWith('image/') || file.type === 'image/svg+xml' || file.size <= 800 * 1024) {
-      resolve(file);
+const PART_SIZE = 10 * 1024 * 1024; // 10MB per chunk
+const MAX_CONCURRENT_UPLOADS = 4;   // parallel part workers
+
+export default function FileUpload({
+  accept,
+  label = 'Drag & drop a file here, or click to select',
+  maxSizeBytes,
+  onUploadSuccess,
+  onUploadError,
+}) {
+  const [progress, setProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [error, setError] = useState(null);
+  const [fileName, setFileName] = useState('');
+  const [isDragActive, setIsDragActive] = useState(false);
+
+  const abortControllerRef = useRef(null);
+  const isMountedRef = useRef(true);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  const uploadFile = async (file) => {
+    if (!file) return;
+
+    if (maxSizeBytes && file.size > maxSizeBytes) {
+      const sizeMb = (maxSizeBytes / (1024 * 1024)).toFixed(0);
+      const errMsg = `File exceeds maximum allowed size of ${sizeMb}MB.`;
+      setError(errMsg);
+      if (onUploadError) onUploadError(errMsg);
       return;
     }
 
-    const img = new Image();
-    const reader = new FileReader();
+    setIsUploading(true);
+    setError(null);
+    setFileName(file.name);
+    setProgress(0);
 
-    reader.onload = (e) => {
-      img.src = e.target.result;
-    };
+    abortControllerRef.current = new AbortController();
+    const { signal } = abortControllerRef.current;
 
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      let { width, height } = img;
-      const MAX_DIM = 2000;
+    let uploadId = null;
+    let r2Key = null;
+    let storedFilename = null;
 
-      if (width > MAX_DIM || height > MAX_DIM) {
-        if (width > height) {
-          height = Math.round((height * MAX_DIM) / width);
-          width = MAX_DIM;
-        } else {
-          width = Math.round((width * MAX_DIM) / height);
-          height = MAX_DIM;
+    try {
+      // 1. Initiate multipart upload — server returns upload_id + presigned part URLs
+      const startResponse = await api.post('/upload/start-upload', {
+        filename: file.name,
+        content_type: file.type || 'application/octet-stream',
+        size: file.size,
+      }, { signal });
+
+      const { upload_id, r2_key, stored_filename, parts } = startResponse.data;
+      uploadId = upload_id;
+      r2Key = r2_key;
+      storedFilename = stored_filename;
+
+      // 2. Upload each part via presigned URL using XHR (for progress tracking)
+      const partProgress = {};
+      const uploadedParts = [];
+      let currentPartIdx = 0;
+
+      const worker = async () => {
+        while (currentPartIdx < parts.length) {
+          if (signal.aborted) throw new Error('Upload aborted');
+
+          const index = currentPartIdx++;
+          const part = parts[index];
+          if (!part) break;
+
+          const partNumber = part.part_number;
+          const start = (partNumber - 1) * PART_SIZE;
+          const end = Math.min(start + PART_SIZE, file.size);
+          const chunk = file.slice(start, end);
+
+          // Use XHR (not fetch/axios) so we get upload progress events on presigned URLs
+          const etagHeader = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', part.url);
+
+            if (file.type) {
+              xhr.setRequestHeader('Content-Type', file.type);
+            }
+
+            xhr.upload.onprogress = (event) => {
+              if (event.lengthComputable) {
+                partProgress[partNumber] = event.loaded;
+                const totalLoaded = Object.values(partProgress).reduce((a, b) => a + b, 0);
+                const percent = Math.min(99, Math.round((totalLoaded / file.size) * 100));
+                if (isMountedRef.current) setProgress(percent);
+              }
+            };
+
+            xhr.onload = () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                resolve(xhr.getResponseHeader('ETag') || '');
+              } else {
+                reject(new Error(`Chunk upload failed with status ${xhr.status}`));
+              }
+            };
+
+            xhr.onerror = () => reject(new Error('Network error uploading chunk'));
+            xhr.onabort = () => reject(new Error('Upload aborted'));
+            signal.addEventListener('abort', () => xhr.abort());
+            xhr.send(chunk);
+          });
+
+          if (!etagHeader) {
+            throw new Error(`ETag header missing for part ${partNumber}`);
+          }
+
+          uploadedParts.push({
+            PartNumber: partNumber,
+            ETag: etagHeader.replace(/"/g, ''),
+          });
+        }
+      };
+
+      // Run parallel workers
+      const workers = Array(Math.min(MAX_CONCURRENT_UPLOADS, parts.length))
+        .fill(null)
+        .map(() => worker());
+
+      await Promise.all(workers);
+
+      // 3. Tell the server to assemble all parts into the final file
+      const completeResponse = await api.post('/upload/complete-upload', {
+        upload_id: uploadId,
+        r2_key: r2Key,
+        stored_filename: storedFilename,
+        original_filename: file.name,
+        content_type: file.type,
+        size: file.size,
+        parts: uploadedParts.sort((a, b) => a.PartNumber - b.PartNumber),
+      }, { signal });
+
+      if (isMountedRef.current) {
+        setProgress(100);
+        if (onUploadSuccess) onUploadSuccess(completeResponse.data);
+      }
+    } catch (err) {
+      if (err.name === 'CanceledError' || err.message === 'Upload aborted') {
+        console.log('Upload canceled by user/unmount.');
+        return;
+      }
+
+      const errorMessage = err.response?.data?.detail || err.message || 'Upload failed';
+      console.error('Upload error:', err);
+
+      if (isMountedRef.current) {
+        setError(errorMessage);
+        if (onUploadError) onUploadError(errorMessage);
+      }
+
+      // Clean up the incomplete multipart session on R2
+      if (uploadId && storedFilename) {
+        try {
+          await api.post('/upload/abort-upload', {
+            upload_id: uploadId,
+            r2_key: r2Key,
+            stored_filename: storedFilename,
+          });
+        } catch (abortError) {
+          console.error('Failed to abort upload on server:', abortError);
         }
       }
-
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, width, height);
-
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            resolve(file);
-            return;
-          }
-          const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".webp"), {
-            type: 'image/webp',
-            lastModified: Date.now(),
-          });
-          console.log(`[Image Compress] Original: ${(file.size / 1024).toFixed(0)}KB -> Compressed: ${(compressedFile.size / 1024).toFixed(0)}KB`);
-          resolve(compressedFile);
-        },
-        'image/webp',
-        0.85
-      );
-    };
-
-    img.onerror = () => resolve(file);
-    reader.readAsDataURL(file);
-  });
-};
-
-export default function FileUpload({ onUploadSuccess, accept = "image/*,.pdf", label = "Upload Image or PDF" }) {
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState('');
-  const [preview, setPreview] = useState(null);
-  const fileInputRef = useRef(null);
-
-  const handleFileSelect = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    await processUpload(file);
-  };
-
-  const handleDrop = async (e) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files?.[0];
-    if (!file) return;
-    await processUpload(file);
-  };
-
-  const processUpload = async (fileToUpload) => {
-    setError('');
-    setUploading(true);
-
-    // Compress high-resolution images client-side before sending to prevent timeouts
-    const file = await compressImageIfNeeded(fileToUpload);
-
-    // Generate local preview if image
-    if (file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (ev) => setPreview(ev.target.result);
-      reader.readAsDataURL(file);
-    } else {
-      setPreview(null);
-    }
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    let uploadedData = null;
-    try {
-      // 45-second extended timeout for network resilience
-      const response = await api.post('/upload/', formData, {
-        timeout: 45000,
-        headers: {
-          'Content-Type': undefined,
-        },
-      });
-
-      uploadedData = response.data;
-    } catch (err) {
-      console.error('FileUpload error details:', err.response?.data || err);
-      const detail = err.response?.data?.detail;
-      const statusText = err.response?.status ? `[HTTP ${err.response.status}] ` : '';
-      const fullErrorMsg = typeof detail === 'object' ? JSON.stringify(detail) : (detail || err.message || 'File upload failed.');
-      setError(`${statusText}${fullErrorMsg}`);
     } finally {
-      setUploading(false);
-    }
-
-    // Safely trigger parent callback OUTSIDE the upload try/catch block
-    if (uploadedData && onUploadSuccess) {
-      try {
-        onUploadSuccess(uploadedData);
-      } catch (parentErr) {
-        console.warn('Parent onUploadSuccess callback handler warning:', parentErr);
+      if (isMountedRef.current) {
+        setIsUploading(false);
       }
     }
   };
 
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    setIsDragActive(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) uploadFile(file);
+  }, []);
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragActive(true);
+  };
+
+  const handleDragLeave = () => setIsDragActive(false);
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (file) uploadFile(file);
+  };
+
+  const acceptAttr = accept
+    ? (typeof accept === 'object' ? Object.keys(accept).join(',') : accept)
+    : undefined;
+
   return (
-    <div style={styles.container}>
-      <div
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-        style={styles.dropZone}
-      >
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileSelect}
-          accept={accept}
-          style={{ display: 'none' }}
-        />
+    <div
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onClick={() => !isUploading && fileInputRef.current?.click()}
+      style={styles.dropzone(isDragActive, !!error, isUploading)}
+    >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={acceptAttr}
+        style={{ display: 'none' }}
+        onChange={handleFileSelect}
+      />
 
-        {uploading ? (
-          <div style={styles.statusBox}>
-            <div style={styles.spinner}></div>
-            <span style={styles.statusText}>Uploading to Cloudflare R2...</span>
+      {isUploading ? (
+        <div style={styles.progressContainer}>
+          <div style={styles.fileName}>{fileName}</div>
+          <div style={styles.progressBar}>
+            <div style={{ ...styles.progressFill, width: `${progress}%` }} />
           </div>
-        ) : preview ? (
-          <div style={styles.previewBox}>
-            <img src={preview} alt="Upload preview" style={styles.previewImage} />
-            <span style={styles.changeText}>Click to change file</span>
-          </div>
-        ) : (
-          <div style={styles.uploadPrompt}>
-            <span style={styles.uploadArrow}>↑</span>
-            <span style={styles.label}>{label}</span>
-            <span style={styles.sublabel}>Drag & drop or click to browse (Max 25MB)</span>
-          </div>
-        )}
-      </div>
-
-      {error && <span style={styles.errorText}>{error}</span>}
+          <div style={styles.progressText}>{progress}%</div>
+        </div>
+      ) : error ? (
+        <div style={styles.textContainer}>
+          <p style={{ ...styles.mainText, color: '#ef4444' }}>Upload Failed</p>
+          <p style={styles.subText}>{error}</p>
+        </div>
+      ) : progress === 100 ? (
+        <div style={styles.textContainer}>
+          <p style={{ ...styles.mainText, color: '#10b981' }}>✅ Upload Complete</p>
+          <p style={styles.subText}>{fileName}</p>
+        </div>
+      ) : (
+        <div style={styles.textContainer}>
+          <p style={styles.mainText}>{label}</p>
+          <p style={styles.subText}>Drag and drop a file or click to browse.</p>
+        </div>
+      )}
     </div>
   );
 }
 
 const styles = {
-  container: {
+  dropzone: (isActive, isError, isUploading) => ({
+    flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    gap: '6px',
-    width: '100%',
-  },
-  dropZone: {
-    backgroundColor: 'var(--bg-surface)',
-    border: '1px dashed var(--border-hairline)',
-    borderRadius: '8px',
-    padding: '20px',
-    textAlign: 'center',
-    cursor: 'pointer',
-    transition: 'all 0.15s ease',
-  },
-  uploadPrompt: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: '4px',
-  },
-  uploadArrow: {
-    fontFamily: "var(--font-mono)",
-    fontSize: '18px',
-    color: 'var(--accent-bronze)',
-    fontWeight: '600',
-  },
-  label: {
-    fontSize: '13px',
-    fontWeight: '500',
-    color: 'var(--text-charcoal)',
-  },
-  sublabel: {
-    fontFamily: "var(--font-mono)",
-    fontSize: '10px',
-    color: 'var(--text-muted)',
-  },
-  statusBox: {
-    display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: '10px',
+    padding: '20px',
+    borderWidth: 2,
+    borderRadius: '8px',
+    borderColor: isError ? '#ef4444' : isActive ? '#2196f3' : 'var(--border-hairline)',
+    borderStyle: 'dashed',
+    backgroundColor: 'var(--bg-canvas)',
+    color: 'var(--text-muted)',
+    outline: 'none',
+    transition: 'border .24s ease-in-out',
+    cursor: isUploading ? 'default' : 'pointer',
+    minHeight: '120px',
+    textAlign: 'center',
+  }),
+  textContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '4px',
   },
-  spinner: {
-    width: '16px',
-    height: '16px',
-    border: '2px solid var(--border-hairline)',
-    borderTop: '2px solid var(--accent-bronze)',
-    borderRadius: '50%',
-    animation: 'spin 0.8s linear infinite',
+  mainText: {
+    margin: 0,
+    color: 'var(--text-charcoal)',
+    fontSize: '14px',
+    fontWeight: '500',
   },
-  statusText: {
-    fontFamily: "var(--font-mono)",
+  subText: {
+    margin: 0,
     fontSize: '12px',
     color: 'var(--text-muted)',
   },
-  previewBox: {
+  progressContainer: {
+    width: '100%',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     gap: '8px',
   },
-  previewImage: {
-    maxHeight: '100px',
+  fileName: {
+    fontFamily: 'var(--font-mono)',
+    fontSize: '12px',
+    color: 'var(--text-charcoal)',
+  },
+  progressBar: {
+    width: '80%',
+    height: '8px',
+    backgroundColor: 'var(--border-hairline)',
     borderRadius: '4px',
-    objectFit: 'contain',
+    overflow: 'hidden',
   },
-  changeText: {
-    fontFamily: "var(--font-mono)",
-    fontSize: '10px',
+  progressFill: {
+    height: '100%',
+    backgroundColor: 'var(--accent-bronze)',
+    transition: 'width 0.3s ease-in-out',
+  },
+  progressText: {
+    fontFamily: 'var(--font-mono)',
+    fontSize: '12px',
     color: 'var(--text-muted)',
-  },
-  errorText: {
-    fontFamily: "var(--font-mono)",
-    fontSize: '11px',
-    color: '#ef4444',
   },
 };
