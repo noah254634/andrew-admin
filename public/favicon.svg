@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141417"/>
+      <stop offset="100%" stop-color="#09090b"/>
+    </linearGradient>
+    <linearGradient id="bronze" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#dfb875"/>
+      <stop offset="50%" stop-color="#c5a059"/>
+      <stop offset="100%" stop-color="#9a7736"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background Card -->
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <rect x="2" y="2" width="124" height="124" rx="26" fill="none" stroke="url(#bronze)" stroke-width="2.5" stroke-opacity="0.5"/>
+
+  <!-- AW Monogram -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- 'A' Left leg & Right slope -->
+    <path d="M 24 94 L 48 34 L 70 94" stroke="#ffffff" stroke-width="8"/>
+    <!-- 'A' Bronze Crossbar -->
+    <path d="M 34 68 L 60 68" stroke="url(#bronze)" stroke-width="6"/>
+    <!-- 'W' Interlocking Legs -->
+    <path d="M 58 94 L 75 42 L 89 82 L 103 42 L 115 94" stroke="url(#bronze)" stroke-width="7.5"/>
+  </g>
+
+  <!-- Top Right Luxury Diamond Accent -->
+  <polygon points="104,22 110,28 104,34 98,28" fill="url(#bronze)" />
+</svg>

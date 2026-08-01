@@ -20,11 +20,14 @@ export default function Profile() {
     cv_url: '',
     availability_status: '',
     email: '',
+    phone: '',
     location: '',
     social_links: {
       behance: '',
       dribbble: '',
       instagram: '',
+      facebook: '',
+      whatsapp: '',
       linkedin: '',
       github: '',
       twitter: '',
@@ -74,11 +77,23 @@ export default function Profile() {
     setError('');
 
     try {
-      const response = await api.put('/profile', profile);
-      setProfile(response.data);
-      setMessage('Profile & CV settings saved successfully.');
+      const { id, ...updatePayload } = profile;
+      const response = await api.put('/profile', updatePayload);
+      if (response.data) {
+        setProfile((prev) => ({
+          ...prev,
+          ...response.data,
+          social_links: response.data.social_links || prev.social_links,
+        }));
+        setMessage('Profile & CV settings saved successfully.');
+      }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to update profile.');
+      console.error('Save profile error:', err.response?.data || err);
+      const detail = err.response?.data?.detail;
+      const errorMsg = Array.isArray(detail)
+        ? detail.map((d) => `${d.loc?.join('.')}: ${d.msg}`).join(', ')
+        : (typeof detail === 'string' ? detail : 'Failed to update profile.');
+      setError(errorMsg);
     } finally {
       setSaving(false);
     }
@@ -154,22 +169,33 @@ export default function Profile() {
                   <label style={styles.label}>Contact Email</label>
                   <input
                     type="email"
-                    value={profile.email}
+                    value={profile.email || ''}
                     onChange={(e) => setProfile({ ...profile, email: e.target.value })}
                     style={styles.input}
                   />
                 </div>
 
                 <div style={styles.fieldGroup}>
-                  <label style={styles.label}>Base Location</label>
+                  <label style={styles.label}>Phone / WhatsApp Number</label>
                   <input
                     type="text"
-                    value={profile.location}
-                    onChange={(e) => setProfile({ ...profile, location: e.target.value })}
-                    placeholder="e.g. Nairobi, Kenya / Remote"
+                    value={profile.phone || ''}
+                    onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                    placeholder="e.g. 0714513051"
                     style={styles.input}
                   />
                 </div>
+              </div>
+
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Base Location</label>
+                <input
+                  type="text"
+                  value={profile.location || ''}
+                  onChange={(e) => setProfile({ ...profile, location: e.target.value })}
+                  placeholder="e.g. Nairobi, Kenya / Remote"
+                  style={styles.input}
+                />
               </div>
 
               <div style={styles.fieldGroup}>
@@ -340,7 +366,39 @@ export default function Profile() {
                           social_links: { ...profile.social_links, instagram: e.target.value },
                         })
                       }
-                      placeholder="https://instagram.com/..."
+                      placeholder="https://instagram.com/wanjala9521"
+                      style={styles.input}
+                    />
+                  </div>
+
+                  <div style={styles.fieldGroup}>
+                    <label style={styles.label}>Facebook URL</label>
+                    <input
+                      type="url"
+                      value={profile.social_links?.facebook || ''}
+                      onChange={(e) =>
+                        setProfile({
+                          ...profile,
+                          social_links: { ...profile.social_links, facebook: e.target.value },
+                        })
+                      }
+                      placeholder="https://facebook.com/wanjala9521"
+                      style={styles.input}
+                    />
+                  </div>
+
+                  <div style={styles.fieldGroup}>
+                    <label style={styles.label}>WhatsApp Direct Link</label>
+                    <input
+                      type="url"
+                      value={profile.social_links?.whatsapp || ''}
+                      onChange={(e) =>
+                        setProfile({
+                          ...profile,
+                          social_links: { ...profile.social_links, whatsapp: e.target.value },
+                        })
+                      }
+                      placeholder="https://wa.me/254714513051"
                       style={styles.input}
                     />
                   </div>
